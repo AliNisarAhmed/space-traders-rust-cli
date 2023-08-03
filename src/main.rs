@@ -58,7 +58,7 @@ async fn main() {
         match args.command {
             Some(Command::Status) => println!("You are logged in as {:?}", user_info.agent.symbol),
             Some(Command::Register { username, faction }) => {
-                let res = register_player(username, faction).await.unwrap();
+                let res = register_player(client, username, faction).await.unwrap();
                 save_user_info(res, current_user_dir);
             }
             Some(Command::WhoAmI) => {
@@ -114,9 +114,7 @@ mod api {
     use reqwest::{Client, Error};
     use serde::{Deserialize, Serialize};
 
-    use crate::domain::{
-        AcceptContractResponse, MyAgentResponse, MyContractsResponse, RegisterResponse,
-    };
+    use crate::domain::{AcceptContractResponse, Agent, MyContractsResponse, RegisterResponse};
 
     const API_BASE_URL: &str = "https://api.spacetraders.io/v2";
 
@@ -155,24 +153,24 @@ mod api {
         Ok(response.data)
     }
 
-    pub async fn fetch_agent_info(client: Client, token: String) -> Result<MyAgentResponse, Error> {
+    pub async fn fetch_agent_info(client: Client, token: String) -> Result<Agent, Error> {
         let url = API_BASE_URL.to_owned() + "/my/agent";
         let response = client
             .get(url)
             .bearer_auth(token)
             .send()
             .await?
-            .json::<ApiResponse<MyAgentResponse>>()
+            .json::<ApiResponse<Agent>>()
             .await?;
         Ok(response.data)
     }
 
     pub async fn register_player(
+        client: reqwest::Client,
         username: String,
         faction: String,
     ) -> Result<RegisterResponse, Error> {
         println!("registering...");
-        let client = reqwest::Client::new();
         let mut body = HashMap::new();
         body.insert("symbol", username);
         body.insert("faction", faction);
@@ -193,25 +191,19 @@ mod domain {
     use serde::{Deserialize, Serialize};
 
     #[derive(Debug, Deserialize, Serialize)]
+    #[serde(rename_all = "camelCase")]
     pub struct Agent {
         pub symbol: String,
+        pub headquarters: String,
+        pub credits: i32,
+        pub starting_faction: String,
+        pub ship_count: Option<i32>,
     }
 
     #[derive(Debug, Deserialize)]
     pub struct RegisterResponse {
         pub token: String,
         pub agent: Agent,
-    }
-
-    #[derive(Debug, Deserialize)]
-    #[serde(rename_all = "camelCase")]
-    pub struct MyAgentResponse {
-        pub account_id: String,
-        pub symbol: String,
-        pub headquarters: String,
-        pub credits: i32,
-        pub starting_faction: String,
-        pub ship_count: Option<i32>,
     }
 
     pub type MyContractsResponse = Vec<Contract>;
