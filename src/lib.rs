@@ -1,20 +1,11 @@
 #![allow(non_camel_case_types)]
 
-use std::error::Error;
+use std::{error::Error, path::PathBuf};
 
-use app_dirs2::{app_dir, AppDataType, AppInfo};
+use api::Api;
 use clap::{Args, Parser, Subcommand};
 use domain::*;
 use serde::{Deserialize, Serialize};
-
-use crate::api::{
-    accept_contract, fetch_agent_info, fetch_contracts, list_waypoints, register_player,
-};
-
-const APP_INFO: AppInfo = AppInfo {
-    name: "space-traders-cli-rust",
-    author: "Ali Ahmed",
-};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about=None)]
@@ -66,47 +57,46 @@ pub struct UserInfo {
 
 type MyResult<T> = Result<T, Box<dyn Error>>;
 
+pub struct Config {
+    pub current_user_dir: Box<PathBuf>,
+}
+
 pub fn get_args() -> MyResult<AppArgs> {
     Ok(AppArgs::parse())
 }
 
-pub async fn run(args: AppArgs) -> MyResult<()> {
-    let current_user_dir = app_dir(AppDataType::UserData, &APP_INFO, "current-user").unwrap();
-    let current_user_dir = current_user_dir.as_path();
-    let client = reqwest::Client::new();
+pub async fn run<'a>(args: AppArgs, config: Config) -> MyResult<()> {
+    let api = Api::new();
 
-    if let Some(user_info) = auth::check_user_token(current_user_dir) {
+    if let Some(user_info) = auth::check_user_token(&config.current_user_dir) {
         match args.command {
             Some(Command::Status) => println!("You are logged in as {:?}", user_info.agent.symbol),
             Some(Command::Register { username, faction }) => {
-                let res = register_player(client, username, faction).await.unwrap();
-                auth::save_user_info(&res, current_user_dir);
+                let res = api.register_player(username, faction).await.unwrap();
+                auth::save_user_info(&res, &config.current_user_dir);
             }
             Some(Command::WhoAmI) => {
                 println!("fetching Agent info...");
-                let res = fetch_agent_info(client, user_info.token).await.unwrap();
+                let res = api.fetch_agent_info(user_info.token).await.unwrap();
                 println!("{:#?}", res)
             }
             Some(Command::MyContracts) => {
-                let res = fetch_contracts(client, user_info.token).await.unwrap();
+                let res = api.fetch_contracts(user_info.token).await.unwrap();
                 println!("{:#?}", res)
             }
             Some(Command::AcceptContract { contract_id }) => {
-                let res = accept_contract(client, user_info.token, contract_id)
+                let res = api
+                    .accept_contract(user_info.token, contract_id)
                     .await
                     .unwrap();
                 println!("{:#?}", res)
             }
             Some(Command::Waypoints(WaypointSubCommand { command })) => match command {
                 WaypointSubCommandArgs::List { filter } => {
-                    let res = list_waypoints(
-                        client,
-                        user_info.token,
-                        user_info.agent.get_system(),
-                        filter,
-                    )
-                    .await
-                    .unwrap();
+                    let res = api
+                        .list_waypoints(user_info.token, user_info.agent.get_system(), filter)
+                        .await
+                        .unwrap();
                     println!("{:#?}", res)
                 }
             },
@@ -157,7 +147,7 @@ pub mod auth {
 // ---- API ----
 
 pub mod api {
-    use std::collections::HashMap;
+    use std::{collections::HashMap, env};
 
     use reqwest::{Client, Error};
     use serde::{Deserialize, Serialize};
@@ -169,94 +159,114 @@ pub mod api {
 
     const API_BASE_URL: &str = "https://api.spacetraders.io/v2";
 
-    #[derive(Debug, Deserialize, Serialize)]
-    pub struct ApiResponse<T> {
-        data: T,
+    pub struct Api {
+        client: Client,
+        api_base_url: String,
     }
 
-    pub async fn list_waypoints(
-        client: Client,
-        token: String,
-        system_symbol: String,
-        waypoint_trait: Option<WaypointTraitSymbol>,
-    ) -> Result<Vec<Waypoint>, Error> {
-        let url = format!("{}/systems/{}/waypoints", API_BASE_URL, system_symbol);
-        let response = client.get(url).bearer_auth(token).send().await?;
-        let response = response.json::<ApiResponse<Vec<Waypoint>>>().await?;
-        if let Some(filter) = waypoint_trait {
-            Ok(response
-                .data
-                .iter()
-                .cloned()
-                .filter(|wp| wp.traits.iter().any(|tr| tr.symbol == filter))
-                .collect())
-        } else {
+    impl Api {
+        pub fn new() -> Self {
+            let url = env::var("TEST_API_BASE_URL").unwrap_or(API_BASE_URL.to_owned());
+            Api {
+                client: Client::new(),
+                api_base_url: url,
+            }
+        }
+
+        pub async fn fetch_agent_info(self: Self, token: String) -> Result<Agent, Error> {
+            let url = self.api_base_url + "/my/agent";
+            let response = self.client.get(url).bearer_auth(token).send().await?;
+            let response = response.json::<ApiResponse<Agent>>().await?;
+            Ok(response.data)
+        }
+
+        pub async fn list_waypoints(
+            self: Self,
+            token: String,
+            system_symbol: String,
+            waypoint_trait: Option<WaypointTraitSymbol>,
+        ) -> Result<Vec<Waypoint>, Error> {
+            let url = format!("{API_BASE_URL}/systems/{system_symbol}/waypoints");
+            let response = self
+                .client
+                .get(url)
+                .bearer_auth(token)
+                .send()
+                .await?
+                .json::<ApiResponse<Vec<Waypoint>>>()
+                .await?;
+            if let Some(filter) = waypoint_trait {
+                Ok(response
+                    .data
+                    .iter()
+                    .cloned()
+                    .filter(|wp| wp.traits.iter().any(|tr| tr.symbol == filter))
+                    .collect())
+            } else {
+                Ok(response.data)
+            }
+        }
+
+        pub async fn accept_contract(
+            self: Self,
+            token: String,
+            contract_id: String,
+        ) -> Result<AcceptContractResponse, Error> {
+            let url = format!("{}/my/contracts/{}/accept", API_BASE_URL, contract_id);
+            let response = self
+                .client
+                .post(url)
+                .bearer_auth(token)
+                .header("Content-Type", "application/json")
+                .header("Accept", "application/json")
+                .header("Content-Length", 0)
+                .send()
+                .await?
+                .json::<ApiResponse<AcceptContractResponse>>()
+                .await?;
+            Ok(response.data)
+        }
+
+        pub async fn fetch_contracts(
+            self: Self,
+            token: String,
+        ) -> Result<MyContractsResponse, Error> {
+            let url = API_BASE_URL.to_owned() + "/my/contracts";
+            let response = self
+                .client
+                .get(url)
+                .bearer_auth(token)
+                .send()
+                .await?
+                .json::<ApiResponse<MyContractsResponse>>()
+                .await?;
+            Ok(response.data)
+        }
+
+        pub async fn register_player(
+            self: Self,
+            username: String,
+            faction: String,
+        ) -> Result<RegisterResponse, Error> {
+            println!("registering...");
+            let mut body = HashMap::new();
+            body.insert("symbol", username);
+            body.insert("faction", faction);
+            let response = self
+                .client
+                .post(API_BASE_URL.to_owned() + "/register")
+                .json(&body)
+                .send()
+                .await?
+                .json::<ApiResponse<RegisterResponse>>()
+                .await?;
             Ok(response.data)
         }
     }
 
-    pub async fn accept_contract(
-        client: Client,
-        token: String,
-        contract_id: String,
-    ) -> Result<AcceptContractResponse, Error> {
-        let url = format!("{}/my/contracts/{}/accept", API_BASE_URL, contract_id);
-        let response = client
-            .post(url)
-            .bearer_auth(token)
-            .header("Content-Type", "application/json")
-            .header("Accept", "application/json")
-            .header("Content-Length", 0)
-            .send()
-            .await?
-            .json::<ApiResponse<AcceptContractResponse>>()
-            .await?;
-        Ok(response.data)
-    }
-    pub async fn fetch_contracts(
-        client: Client,
-        token: String,
-    ) -> Result<MyContractsResponse, Error> {
-        let url = API_BASE_URL.to_owned() + "/my/contracts";
-        let response = client
-            .get(url)
-            .bearer_auth(token)
-            .send()
-            .await?
-            .json::<ApiResponse<MyContractsResponse>>()
-            .await?;
-        Ok(response.data)
-    }
-
-    pub async fn fetch_agent_info(client: Client, token: String) -> Result<Agent, Error> {
-        let url = API_BASE_URL.to_owned() + "/my/agent";
-        let response = client
-            .get(url)
-            .bearer_auth(token)
-            .send()
-            .await?
-            .json::<ApiResponse<Agent>>()
-            .await?;
-        Ok(response.data)
-    }
-
-    pub async fn register_player(
-        client: reqwest::Client,
-        username: String,
-        faction: String,
-    ) -> Result<RegisterResponse, Error> {
-        println!("registering...");
-        let mut body = HashMap::new();
-        body.insert("symbol", username);
-        body.insert("faction", faction);
-        let response = client
-            .post(API_BASE_URL.to_owned() + "/register")
-            .json(&body)
-            .send()
-            .await?
-            .json::<ApiResponse<RegisterResponse>>()
-            .await?;
-        Ok(response.data)
+    #[derive(Debug, Deserialize, Serialize)]
+    pub struct ApiResponse<T> {
+        pub data: T,
     }
 }
 
@@ -284,6 +294,7 @@ pub mod domain {
 
         pub fn get_system(&self) -> String {
             let vec: Vec<&str> = self.headquarters.split("-").collect();
+            // format!("{vec[0]}-{vec[1]}")
             String::from(vec[0]) + "-" + vec[1]
         }
 

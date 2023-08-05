@@ -4,7 +4,6 @@ mod auth_tests {
     mod test_save_user_info {
 
         use assert_fs::prelude::*;
-        use predicates::prelude::*;
         use space_traders_rust::{
             auth::save_user_info,
             domain::{Agent, RegisterResponse},
