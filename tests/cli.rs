@@ -12,7 +12,7 @@ mod cli_tests {
 
         use assert_cmd::Command;
         use assert_fs::prelude::{FileTouch, PathChild};
-        use space_traders_rust::{domain::Agent, UserInfo, api::ApiResponse};
+        use space_traders_rust::{api::ApiResponse, domain::Agent, UserInfo};
 
         #[test]
         fn reports_status() -> TestResult {
@@ -41,6 +41,7 @@ mod cli_tests {
 
             let api_response: ApiResponse<Agent> = ApiResponse {
                 data: api_response_agent,
+                meta: None,
             };
             let file = File::create(current_user_file).unwrap();
             let mut writer = BufWriter::new(file);

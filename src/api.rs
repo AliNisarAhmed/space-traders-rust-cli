@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::domain::{
     AcceptContractResponse, Agent, MyContractsResponse, PurchaseShipResponse, RegisterResponse,
-    Waypoint, WaypointTraitSymbol,
+    Ship, ShipOrbitResponse, ShipType, Waypoint, WaypointTraitSymbol, ShipNavigateResponse,
 };
 
 const API_BASE_URL: &str = "https://api.spacetraders.io/v2";
@@ -24,15 +24,68 @@ impl Api {
         }
     }
 
+    pub async fn navigate_ship(
+        self: Self,
+        token: String,
+        ship_symbol: String,
+        waypoint_symbol: String,
+    ) -> Result<ShipNavigateResponse, Error> {
+        let url = format!("{}/my/ships/{ship_symbol}/navigate", self.api_base_url);
+        let mut body = HashMap::new();
+        body.insert("waypointSymbol", waypoint_symbol);
+        let response = self
+            .client
+            .post(url)
+            .json(&body)
+            .bearer_auth(token)
+            .send()
+            .await?
+            .json::<ApiResponse<ShipNavigateResponse>>()
+            .await?;
+        Ok(response.data)
+    }
+
+    pub async fn orbit_ship(
+        self: Self,
+        token: String,
+        ship_symbol: String,
+    ) -> Result<ShipOrbitResponse, Error> {
+        let url = format!("{}/my/ships/{ship_symbol}/orbit", self.api_base_url);
+        let response = self
+            .client
+            .post(url)
+            .bearer_auth(token)
+            .header("Content-Length", 0)
+            .send()
+            .await?
+            .json::<ApiResponse<ShipOrbitResponse>>()
+            .await?;
+        Ok(response.data)
+    }
+
+    pub async fn list_ships(self: Self, token: String) -> Result<Vec<Ship>, Error> {
+        let url = self.api_base_url + "/my/ships";
+        let response = self
+            .client
+            .get(url)
+            .bearer_auth(token)
+            .send()
+            .await?
+            .json::<ApiResponse<Vec<Ship>>>()
+            .await?;
+
+        Ok(response.data)
+    }
+
     pub async fn purchase_ship(
         self: Self,
         token: String,
-        ship_type: String,
+        ship_type: ShipType,
         waypoint_symbol: String,
     ) -> Result<PurchaseShipResponse, Error> {
         let url = self.api_base_url + "/my/ships";
         let mut body = HashMap::new();
-        body.insert("shipType", ship_type);
+        body.insert("shipType", ship_type.to_string());
         body.insert("waypointSymbol", waypoint_symbol);
         let response = self
             .client
@@ -137,4 +190,12 @@ impl Api {
 #[derive(Debug, Deserialize, Serialize)]
 pub struct ApiResponse<T> {
     pub data: T,
+    pub meta: Option<Meta>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct Meta {
+    total: i32,
+    page: i32,
+    limit: i32,
 }
