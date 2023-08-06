@@ -2,6 +2,8 @@
 
 use std::{error::Error, path::PathBuf};
 
+pub mod api;
+
 use api::Api;
 use clap::{Args, Parser, Subcommand};
 use domain::*;
@@ -144,132 +146,6 @@ pub mod auth {
     }
 }
 
-// ---- API ----
-
-pub mod api {
-    use std::{collections::HashMap, env};
-
-    use reqwest::{Client, Error};
-    use serde::{Deserialize, Serialize};
-
-    use crate::domain::{
-        AcceptContractResponse, Agent, MyContractsResponse, RegisterResponse, Waypoint,
-        WaypointTraitSymbol,
-    };
-
-    const API_BASE_URL: &str = "https://api.spacetraders.io/v2";
-
-    pub struct Api {
-        client: Client,
-        api_base_url: String,
-    }
-
-    impl Api {
-        pub fn new() -> Self {
-            let url = env::var("TEST_API_BASE_URL").unwrap_or(API_BASE_URL.to_owned());
-            Api {
-                client: Client::new(),
-                api_base_url: url,
-            }
-        }
-
-        pub async fn fetch_agent_info(self: Self, token: String) -> Result<Agent, Error> {
-            let url = self.api_base_url + "/my/agent";
-            let response = self.client.get(url).bearer_auth(token).send().await?;
-            let response = response.json::<ApiResponse<Agent>>().await?;
-            Ok(response.data)
-        }
-
-        pub async fn list_waypoints(
-            self: Self,
-            token: String,
-            system_symbol: String,
-            waypoint_trait: Option<WaypointTraitSymbol>,
-        ) -> Result<Vec<Waypoint>, Error> {
-            let url = format!("{API_BASE_URL}/systems/{system_symbol}/waypoints");
-            let response = self
-                .client
-                .get(url)
-                .bearer_auth(token)
-                .send()
-                .await?
-                .json::<ApiResponse<Vec<Waypoint>>>()
-                .await?;
-            if let Some(filter) = waypoint_trait {
-                Ok(response
-                    .data
-                    .iter()
-                    .cloned()
-                    .filter(|wp| wp.traits.iter().any(|tr| tr.symbol == filter))
-                    .collect())
-            } else {
-                Ok(response.data)
-            }
-        }
-
-        pub async fn accept_contract(
-            self: Self,
-            token: String,
-            contract_id: String,
-        ) -> Result<AcceptContractResponse, Error> {
-            let url = format!("{}/my/contracts/{}/accept", API_BASE_URL, contract_id);
-            let response = self
-                .client
-                .post(url)
-                .bearer_auth(token)
-                .header("Content-Type", "application/json")
-                .header("Accept", "application/json")
-                .header("Content-Length", 0)
-                .send()
-                .await?
-                .json::<ApiResponse<AcceptContractResponse>>()
-                .await?;
-            Ok(response.data)
-        }
-
-        pub async fn fetch_contracts(
-            self: Self,
-            token: String,
-        ) -> Result<MyContractsResponse, Error> {
-            let url = API_BASE_URL.to_owned() + "/my/contracts";
-            let response = self
-                .client
-                .get(url)
-                .bearer_auth(token)
-                .send()
-                .await?
-                .json::<ApiResponse<MyContractsResponse>>()
-                .await?;
-            Ok(response.data)
-        }
-
-        pub async fn register_player(
-            self: Self,
-            username: String,
-            faction: String,
-        ) -> Result<RegisterResponse, Error> {
-            println!("registering...");
-            let mut body = HashMap::new();
-            body.insert("symbol", username);
-            body.insert("faction", faction);
-            let response = self
-                .client
-                .post(API_BASE_URL.to_owned() + "/register")
-                .json(&body)
-                .send()
-                .await?
-                .json::<ApiResponse<RegisterResponse>>()
-                .await?;
-            Ok(response.data)
-        }
-    }
-
-    #[derive(Debug, Deserialize, Serialize)]
-    pub struct ApiResponse<T> {
-        pub data: T,
-    }
-}
-
 // ---- Domain ----
 
 pub mod domain {
@@ -314,6 +190,23 @@ pub mod domain {
 
     #[derive(Debug, Deserialize)]
     #[serde(rename_all = "camelCase")]
+    pub struct AcceptContractResponse {
+        pub agent: Agent,
+        pub contract: Contract,
+    }
+
+    #[derive(Debug, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct PurchaseShipResponse {
+        pub agent: Agent,
+        pub ship: Ship,
+        pub transaction: Transaction,
+    }
+
+    // ---------------------------------------------
+
+    #[derive(Debug, Deserialize)]
+    #[serde(rename_all = "camelCase")]
     pub struct Contract {
         pub id: String,
         pub faction_symbol: String,
@@ -348,13 +241,6 @@ pub mod domain {
         pub destination_symbol: String,
         pub units_required: i32,
         pub units_fulfilled: i32,
-    }
-
-    #[derive(Debug, Deserialize)]
-    #[serde(rename_all = "camelCase")]
-    pub struct AcceptContractResponse {
-        pub agent: Agent,
-        pub contract: Contract,
     }
 
     #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -475,5 +361,316 @@ pub mod domain {
         CRUSHING_GRAVITY,
         CORROSIVE_ATMOSPHERE,
         BREATHABLE_ATMOSPHERE,
+    }
+
+    #[derive(Debug, Serialize, Deserialize)]
+    pub enum ShipType {
+        SHIP_PROBE,
+        SHIP_MINING_DRONE,
+        SHIP_INTERCEPTOR,
+        SHIP_LIGHT_HAULER,
+        SHIP_COMMAND_FRIGATE,
+        SHIP_EXPLORER,
+        SHIP_HEAVY_FREIGHTER,
+        SHIP_LIGHT_SHUTTLE,
+        SHIP_ORE_HOUND,
+        SHIP_REFINING_FREIGHTER,
+    }
+
+    #[derive(Debug, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct Ship {
+        pub symbol: String,
+        pub registration: ShipRegistration,
+        pub nav: ShipNav,
+        pub crew: ShipCrew,
+        pub frame: ShipFrame,
+        pub reactor: ShipReactor,
+        pub engine: ShipEngine,
+        pub modules: Vec<ShipModule>,
+        pub mounts: Vec<ShipMount>,
+        pub cargo: ShipCargo,
+        pub fuel: ShipFuel,
+    }
+
+    #[derive(Debug, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct ShipRegistration {
+        pub name: String,
+        pub faction_symbol: String,
+        pub role: ShipRole,
+    }
+
+    #[derive(Debug, Serialize, Deserialize)]
+    pub enum ShipRole {
+        FABRICATOR,
+        HARVESTOR,
+        HAULER,
+        INTERCEPTOR,
+        EXCAVATOR,
+        TRANSPORT,
+        REPAIR,
+        SURVEYOR,
+        COMMAND,
+        CARRIER,
+        PATROL,
+        SATELLITE,
+        EXPLORER,
+        REFINERY,
+    }
+
+    #[derive(Debug, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct ShipNav {
+        pub system_symbol: String,
+        pub waypoint_symbol: String,
+        pub route: Route,
+        pub status: String,
+        pub flight_mode: FlightMode,
+    }
+
+    #[derive(Debug, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct Route {
+        pub destination: Location,
+        pub departure: Location,
+        pub departure_time: String,
+        pub arrival: String,
+    }
+
+    #[derive(Debug, Serialize, Deserialize)]
+    pub enum FlightMode {
+        DRIFT,
+        STEALTH,
+        CRUISE,
+        BURN,
+    }
+
+    #[derive(Debug, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct Location {
+        pub symbol: String,
+        pub waypoint_type: WaypointType,
+        pub system_symbol: String,
+        pub x: i32,
+        pub y: i32,
+    }
+
+    #[derive(Debug, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct ShipCrew {
+        pub current: i32,
+        pub required: i32,
+        pub capacity: i32,
+        pub rotation: CrewRotation,
+        pub morale: i32,
+        pub wages: i32,
+    }
+
+    #[derive(Debug, Serialize, Deserialize)]
+    pub enum CrewRotation {
+        STRICT,
+        RELAXED,
+    }
+
+    #[derive(Debug, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct ShipFrame {
+        pub symbol: ShipFrameSymbol,
+        pub name: String,
+        pub description: String,
+        pub condition: i32,
+        pub module_slots: i32,
+        pub mounting_points: i32,
+        pub fuel_capacity: i32,
+        pub requirements: Requirement,
+    }
+
+    #[derive(Debug, Serialize, Deserialize)]
+    pub enum ShipFrameSymbol {
+        FRAME_PROBE,
+        FRAME_DRONE,
+        FRAME_INTERCEPTOR,
+        FRAME_RACER,
+        FRAME_FIGHTER,
+        FRAME_FRIGATE,
+        FRAME_SHUTTLE,
+        FRAME_EXPLORER,
+        FRAME_MINER,
+        FRAME_LIGHT_FREIGHTER,
+        FRAME_HEAVY_FREIGHTER,
+        FRAME_TRANSPORT,
+        FRAME_DESTROYER,
+        FRAME_CRUISER,
+        FRAME_CARRIER,
+    }
+
+    #[derive(Debug, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct Requirement {
+        pub power: i32,
+        pub crew: i32,
+        pub slots: i32,
+    }
+
+    #[derive(Debug, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct ShipReactor {
+        pub symbol: ShipReactorSymbol,
+        pub name: String,
+        pub description: String,
+        pub condition: i32,
+        pub power_output: i32,
+        pub requirements: Requirement,
+    }
+
+    #[derive(Debug, Serialize, Deserialize)]
+    pub enum ShipReactorSymbol {
+        REACTOR_SOLAR_I,
+        REACTOR_FUSION_I,
+        REACTOR_FISSION_I,
+        REACTOR_CHEMICAL_I,
+        REACTOR_ANTIMATTER_I,
+    }
+
+    #[derive(Debug, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct ShipEngine {
+        pub symbol: ShipEngineSymbol,
+        pub name: String,
+        pub description: String,
+        pub condition: i32,
+        pub speed: i32,
+        pub requirements: Requirement,
+    }
+
+    #[derive(Debug, Serialize, Deserialize)]
+    pub enum ShipEngineSymbol {
+        ENGINE_IMPULSE_DRIVE_I,
+        ENGINE_ION_DRIVE_I,
+        ENGINE_ION_DRIVE_II,
+        ENGINE_HYPER_DRIVE_I,
+    }
+
+    #[derive(Debug, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct ShipModule {
+        pub symbol: ShipModuleSymbol,
+        pub capacity: i32,
+        pub range: i32,
+        pub name: String,
+        pub description: String,
+        pub requirements: Requirement,
+    }
+
+    #[derive(Debug, Serialize, Deserialize)]
+    pub enum ShipModuleSymbol {
+        MODULE_MINERAL_PROCESSOR_I,
+        MODULE_CARGO_HOLD_I,
+        MODULE_CREW_QUARTERS_I,
+        MODULE_ENVOY_QUARTERS_I,
+        MODULE_PASSENGER_CABIN_I,
+        MODULE_MICRO_REFINERY_I,
+        MODULE_ORE_REFINERY_I,
+        MODULE_FUEL_REFINERY_I,
+        MODULE_SCIENCE_LAB_I,
+        MODULE_JUMP_DRIVE_I,
+        MODULE_JUMP_DRIVE_II,
+        MODULE_JUMP_DRIVE_III,
+        MODULE_WARP_DRIVE_I,
+        MODULE_WARP_DRIVE_II,
+        MODULE_WARP_DRIVE_III,
+        MODULE_SHIELD_GENERATOR_I,
+        MODULE_SHIELD_GENERATOR_II,
+    }
+
+    #[derive(Debug, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct ShipMount {
+        pub symbol: ShipMountSymbol,
+        pub name: String,
+        pub description: String,
+        pub strength: i32,
+        pub deposits: Vec<Deposit>,
+        pub requirements: Requirement,
+    }
+
+    #[derive(Debug, Serialize, Deserialize)]
+    pub enum ShipMountSymbol {
+        MOUNT_GAS_SIPHON_I,
+        MOUNT_GAS_SIPHON_II,
+        MOUNT_GAS_SIPHON_III,
+        MOUNT_SURVEYOR_I,
+        MOUNT_SURVEYOR_II,
+        MOUNT_SURVEYOR_III,
+        MOUNT_SENSOR_ARRAY_I,
+        MOUNT_SENSOR_ARRAY_II,
+        MOUNT_SENSOR_ARRAY_III,
+        MOUNT_MINING_LASER_I,
+        MOUNT_MINING_LASER_II,
+        MOUNT_MINING_LASER_III,
+        MOUNT_LASER_CANNON_I,
+        MOUNT_MISSILE_LAUNCHER_I,
+        MOUNT_TURRET_I,
+    }
+
+    #[derive(Debug, Serialize, Deserialize)]
+    pub enum Deposit {
+        QUARTZ_SAND,
+        SILICON_CRYSTALS,
+        PRECIOUS_STONES,
+        ICE_WATER,
+        AMMONIA_ICE,
+        IRON_ORE,
+        COPPER_ORE,
+        SILVER_ORE,
+        ALUMINUM_ORE,
+        GOLD_ORE,
+        PLATINUM_ORE,
+        DIAMONDS,
+        URANITE_ORE,
+        MERITIUM_ORE,
+    }
+
+    #[derive(Debug, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct ShipCargo {
+        pub capacity: i32,
+        pub units: i32,
+        pub inventory: Vec<Inventory>,
+    }
+
+    #[derive(Debug, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct Inventory {
+        pub symbol: String,
+        pub name: String,
+        pub description: String,
+        pub units: i32,
+    }
+
+    #[derive(Debug, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct ShipFuel {
+        pub current: i32,
+        pub capacity: i32,
+        pub consumed: Option<Consumed>,
+    }
+
+    #[derive(Debug, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct Consumed {
+        pub amount: i32,
+        pub timestamp: String,
+    }
+
+    #[derive(Debug, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct Transaction {
+        pub waypoint_symbol: String,
+        pub ship_symbol: String,
+        pub price: i32,
+        pub agent_symbol: String,
+        pub timestamp: String,
     }
 }

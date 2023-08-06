@@ -12,7 +12,7 @@ mod cli_tests {
 
         use assert_cmd::Command;
         use assert_fs::prelude::{FileTouch, PathChild};
-        use space_traders_rust::{api::ApiResponse, domain::Agent, UserInfo};
+        use space_traders_rust::{domain::Agent, UserInfo, api::ApiResponse};
 
         #[test]
         fn reports_status() -> TestResult {
