@@ -74,12 +74,26 @@ enum ShipSubCommandArgs {
         ship_symbol: String,
     },
     Navigate {
+        #[command(subcommand)]
+        command: ShipNavigateSubCommandArgs,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum ShipNavigateSubCommandArgs {
+    Status {
+        #[arg(short, long)]
+        ship_symbol: String,
+    },
+    Navigate {
         #[arg(short, long)]
         ship_symbol: String,
         #[arg(short, long)]
         waypoint_symbol: String,
     },
 }
+
+// ----
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct UserInfo {
@@ -151,16 +165,25 @@ pub async fn run<'a>(args: AppArgs, config: Config) -> MyResult<()> {
                     let res = api.orbit_ship(user_info.token, ship_symbol).await.unwrap();
                     println!("{:#?}", res)
                 }
-                ShipSubCommandArgs::Navigate {
-                    ship_symbol,
-                    waypoint_symbol,
-                } => {
-                    let res = api
-                        .navigate_ship(user_info.token, ship_symbol, waypoint_symbol)
-                        .await
-                        .unwrap();
-                    println!("{:#?}", res)
-                }
+                ShipSubCommandArgs::Navigate { command } => match command {
+                    ShipNavigateSubCommandArgs::Status { ship_symbol } => {
+                        let res = api.get_ship_nav_status(user_info.token, ship_symbol).await;
+                        match res {
+                            Ok(res) => println!("{:#?}", res),
+                            Err(e) => println!("{:#?}", e),
+                        }
+                    }
+                    ShipNavigateSubCommandArgs::Navigate {
+                        ship_symbol,
+                        waypoint_symbol,
+                    } => {
+                        let res = api
+                            .navigate_ship(user_info.token, ship_symbol, waypoint_symbol)
+                            .await
+                            .unwrap();
+                        println!("{:#?}", res);
+                    }
+                },
             },
             None => println!("invalid command"),
         }

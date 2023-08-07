@@ -5,7 +5,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::domain::{
     AcceptContractResponse, Agent, MyContractsResponse, PurchaseShipResponse, RegisterResponse,
-    Ship, ShipOrbitResponse, ShipType, Waypoint, WaypointTraitSymbol, ShipNavigateResponse,
+    Ship, ShipNav, ShipNavigateResponse, ShipOrbitResponse, ShipType, Waypoint,
+    WaypointTraitSymbol,
 };
 
 const API_BASE_URL: &str = "https://api.spacetraders.io/v2";
@@ -22,6 +23,24 @@ impl Api {
             client: Client::new(),
             api_base_url: url,
         }
+    }
+
+    pub async fn get_ship_nav_status(
+        self: Self,
+        token: String,
+        ship_symbol: String,
+    ) -> Result<ShipNav, Error> {
+        let url = format!("{}/my/ships/{ship_symbol}/nav", self.api_base_url);
+        let response = self
+            .client
+            .get(url)
+            .bearer_auth(token)
+            .send()
+            .await?
+            .json::<ApiResponse<ShipNav>>()
+            .await?;
+
+        Ok(response.data)
     }
 
     pub async fn navigate_ship(
