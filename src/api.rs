@@ -3,38 +3,39 @@ use std::{collections::HashMap, env};
 use reqwest::{Client, Error};
 use serde::{Deserialize, Serialize};
 
-use crate::domain::{
-    AcceptContractResponse, Agent, MyContractsResponse, PurchaseShipResponse, RegisterResponse,
-    Ship, ShipNav, ShipNavigateResponse, ShipOrbitResponse, ShipType, Waypoint,
-    WaypointTraitSymbol,
+use crate::{
+    domain::{
+        AcceptContractResponse, Agent, MyContractsResponse, PurchaseShipResponse, RegisterResponse,
+        Ship, ShipNav, ShipNavigateResponse, ShipOrbitResponse, ShipType, Waypoint,
+        WaypointTraitSymbol,
+    },
+    UserInfo,
 };
 
 const API_BASE_URL: &str = "https://api.spacetraders.io/v2";
 
-pub struct Api {
+pub struct Api<'a> {
     client: Client,
     api_base_url: String,
+    user_info: &'a UserInfo,
 }
 
-impl Api {
-    pub fn new() -> Self {
+impl<'a> Api<'a> {
+    pub fn new(user_info: &'a UserInfo) -> Self {
         let url = env::var("TEST_API_BASE_URL").unwrap_or(API_BASE_URL.to_owned());
         Api {
             client: Client::new(),
             api_base_url: url,
+            user_info,
         }
     }
 
-    pub async fn get_ship_nav_status(
-        self: Self,
-        token: String,
-        ship_symbol: String,
-    ) -> Result<ShipNav, Error> {
+    pub async fn get_ship_nav_status(self: Self, ship_symbol: String) -> Result<ShipNav, Error> {
         let url = format!("{}/my/ships/{ship_symbol}/nav", self.api_base_url);
         let response = self
             .client
             .get(url)
-            .bearer_auth(token)
+            .bearer_auth(&self.user_info.token)
             .send()
             .await?
             .json::<ApiResponse<ShipNav>>()
@@ -45,7 +46,6 @@ impl Api {
 
     pub async fn navigate_ship(
         self: Self,
-        token: String,
         ship_symbol: String,
         waypoint_symbol: String,
     ) -> Result<ShipNavigateResponse, Error> {
@@ -56,7 +56,7 @@ impl Api {
             .client
             .post(url)
             .json(&body)
-            .bearer_auth(token)
+            .bearer_auth(&self.user_info.token)
             .send()
             .await?
             .json::<ApiResponse<ShipNavigateResponse>>()
@@ -64,16 +64,12 @@ impl Api {
         Ok(response.data)
     }
 
-    pub async fn orbit_ship(
-        self: Self,
-        token: String,
-        ship_symbol: String,
-    ) -> Result<ShipOrbitResponse, Error> {
+    pub async fn orbit_ship(self: Self, ship_symbol: String) -> Result<ShipOrbitResponse, Error> {
         let url = format!("{}/my/ships/{ship_symbol}/orbit", self.api_base_url);
         let response = self
             .client
             .post(url)
-            .bearer_auth(token)
+            .bearer_auth(&self.user_info.token)
             .header("Content-Length", 0)
             .send()
             .await?
@@ -82,12 +78,12 @@ impl Api {
         Ok(response.data)
     }
 
-    pub async fn list_ships(self: Self, token: String) -> Result<Vec<Ship>, Error> {
+    pub async fn list_ships(self: Self) -> Result<Vec<Ship>, Error> {
         let url = self.api_base_url + "/my/ships";
         let response = self
             .client
             .get(url)
-            .bearer_auth(token)
+            .bearer_auth(&self.user_info.token)
             .send()
             .await?
             .json::<ApiResponse<Vec<Ship>>>()
@@ -98,7 +94,6 @@ impl Api {
 
     pub async fn purchase_ship(
         self: Self,
-        token: String,
         ship_type: ShipType,
         waypoint_symbol: String,
     ) -> Result<PurchaseShipResponse, Error> {
@@ -110,7 +105,7 @@ impl Api {
             .client
             .post(url)
             .json(&body)
-            .bearer_auth(token)
+            .bearer_auth(&self.user_info.token)
             .send()
             .await?
             .json::<ApiResponse<PurchaseShipResponse>>()
@@ -118,16 +113,20 @@ impl Api {
         Ok(response.data)
     }
 
-    pub async fn fetch_agent_info(self: Self, token: String) -> Result<Agent, Error> {
+    pub async fn fetch_agent_info(self: Self) -> Result<Agent, Error> {
         let url = self.api_base_url + "/my/agent";
-        let response = self.client.get(url).bearer_auth(token).send().await?;
+        let response = self
+            .client
+            .get(url)
+            .bearer_auth(&self.user_info.token)
+            .send()
+            .await?;
         let response = response.json::<ApiResponse<Agent>>().await?;
         Ok(response.data)
     }
 
     pub async fn list_waypoints(
         self: Self,
-        token: String,
         system_symbol: String,
         waypoint_trait: Option<WaypointTraitSymbol>,
     ) -> Result<Vec<Waypoint>, Error> {
@@ -135,7 +134,7 @@ impl Api {
         let response = self
             .client
             .get(url)
-            .bearer_auth(token)
+            .bearer_auth(&self.user_info.token)
             .send()
             .await?
             .json::<ApiResponse<Vec<Waypoint>>>()
@@ -154,14 +153,13 @@ impl Api {
 
     pub async fn accept_contract(
         self: Self,
-        token: String,
         contract_id: String,
     ) -> Result<AcceptContractResponse, Error> {
         let url = format!("{}/my/contracts/{}/accept", API_BASE_URL, contract_id);
         let response = self
             .client
             .post(url)
-            .bearer_auth(token)
+            .bearer_auth(&self.user_info.token)
             .header("Content-Type", "application/json")
             .header("Accept", "application/json")
             .header("Content-Length", 0)
@@ -172,12 +170,12 @@ impl Api {
         Ok(response.data)
     }
 
-    pub async fn fetch_contracts(self: Self, token: String) -> Result<MyContractsResponse, Error> {
+    pub async fn fetch_contracts(self: Self) -> Result<MyContractsResponse, Error> {
         let url = API_BASE_URL.to_owned() + "/my/contracts";
         let response = self
             .client
             .get(url)
-            .bearer_auth(token)
+            .bearer_auth(&self.user_info.token)
             .send()
             .await?
             .json::<ApiResponse<MyContractsResponse>>()
