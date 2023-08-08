@@ -62,6 +62,10 @@ struct ShipSubCommand {
 
 #[derive(Debug, Subcommand)]
 enum ShipSubCommandArgs {
+    Navigate {
+        #[command(subcommand)]
+        command: ShipNavigateSubCommandArgs,
+    },
     List,
     Purchase {
         #[arg(short, long)]
@@ -70,12 +74,27 @@ enum ShipSubCommandArgs {
         waypoint_symbol: String,
     },
     Orbit {
+        #[arg(short = 's', long)]
+        ship_symbol: String,
+    },
+    Dock {
         #[arg(short, long)]
         ship_symbol: String,
     },
-    Navigate {
-        #[command(subcommand)]
-        command: ShipNavigateSubCommandArgs,
+    Status {
+        #[arg(short, long)]
+        ship_symbol: String,
+    },
+    Refuel {
+        #[arg(short = 's', long)]
+        ship_symbol: String,
+
+        #[arg(short, long)]
+        units: Option<i32>,
+    },
+    Extract {
+        #[arg(short = 's', long)]
+        ship_symbol: String,
     },
 }
 
@@ -118,12 +137,15 @@ pub async fn run<'a>(args: AppArgs, config: Config) -> MyResult<()> {
             Some(Command::Status) => println!("You are logged in as {:#?}", user_info),
             Some(Command::Register { username, faction }) => {
                 let res = api.register_player(username, faction).await.unwrap();
-                auth::save_user_info(&res, &config.current_user_dir);
+                auth::save_user_info(&res.data, &config.current_user_dir);
             }
             Some(Command::WhoAmI) => {
                 println!("fetching Agent info...");
-                let res = api.fetch_agent_info().await.unwrap();
-                println!("{:#?}", res)
+                let res = api.fetch_agent_info().await;
+                match res {
+                    Ok(res) => println!("{:#?}", res),
+                    Err(e) => println!("{:#?}", e),
+                }
             }
             Some(Command::MyContracts) => {
                 let res = api.fetch_contracts().await.unwrap();
@@ -147,16 +169,53 @@ pub async fn run<'a>(args: AppArgs, config: Config) -> MyResult<()> {
                     ship_type,
                     waypoint_symbol,
                 } => {
-                    let res = api.purchase_ship(ship_type, waypoint_symbol).await.unwrap();
-                    println!("{:#?}", res)
+                    let res = api.purchase_ship(ship_type, waypoint_symbol).await;
+                    match res {
+                        Ok(res) => println!("{:#?}", res),
+                        Err(e) => println!("{:#?}", e),
+                    }
                 }
                 ShipSubCommandArgs::List => {
-                    let res = api.list_ships().await.unwrap();
-                    println!("{:#?}", res)
+                    let res = api.list_ships().await;
+                    match res {
+                        Ok(res) => println!("{:#?}", res),
+                        Err(e) => println!("{:#?}", e),
+                    }
                 }
                 ShipSubCommandArgs::Orbit { ship_symbol } => {
-                    let res = api.orbit_ship(ship_symbol).await.unwrap();
-                    println!("{:#?}", res)
+                    let res = api.orbit_ship(ship_symbol).await;
+                    match res {
+                        Ok(res) => println!("{:#?}", res),
+                        Err(e) => println!("{:#?}", e),
+                    }
+                }
+                ShipSubCommandArgs::Dock { ship_symbol } => {
+                    let res = api.dock_ship(ship_symbol).await;
+                    match res {
+                        Ok(res) => println!("{:#?}", res),
+                        Err(e) => println!("{:#?}", e),
+                    }
+                }
+                ShipSubCommandArgs::Status { ship_symbol } => {
+                    let res = api.get_ship_status(ship_symbol).await;
+                    match res {
+                        Ok(res) => println!("{:#?}", res),
+                        Err(e) => println!("{:#?}", e),
+                    }
+                }
+                ShipSubCommandArgs::Refuel { ship_symbol, units } => {
+                    let res = api.refuel_ship(ship_symbol, units).await;
+                    match res {
+                        Ok(res) => println!("{:#?}", res),
+                        Err(e) => println!("{:#?}", e),
+                    }
+                }
+                ShipSubCommandArgs::Extract { ship_symbol } => {
+                    let res = api.extract_resource(ship_symbol, None).await;
+                    match res {
+                        Ok(res) => println!("{:#?}", res),
+                        Err(e) => println!("{:#?}", e),
+                    }
                 }
                 ShipSubCommandArgs::Navigate { command } => match command {
                     ShipNavigateSubCommandArgs::Status { ship_symbol } => {
@@ -170,11 +229,11 @@ pub async fn run<'a>(args: AppArgs, config: Config) -> MyResult<()> {
                         ship_symbol,
                         waypoint_symbol,
                     } => {
-                        let res = api
-                            .navigate_ship(ship_symbol, waypoint_symbol)
-                            .await
-                            .unwrap();
-                        println!("{:#?}", res);
+                        let res = api.navigate_ship(ship_symbol, waypoint_symbol).await;
+                        match res {
+                            Ok(res) => println!("{:#?}", res),
+                            Err(e) => println!("{:#?}", e),
+                        }
                     }
                 },
             },

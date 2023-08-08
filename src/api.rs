@@ -1,12 +1,13 @@
 use std::{collections::HashMap, env};
 
-use reqwest::{Client, Error};
-use serde::{Deserialize, Serialize};
+use reqwest::{Client, Error, Response, StatusCode};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 use crate::{
     domain::{
-        AcceptContractResponse, Agent, MyContractsResponse, PurchaseShipResponse, RegisterResponse,
-        Ship, ShipNav, ShipNavigateResponse, ShipOrbitResponse, ShipType, Waypoint,
+        AcceptContractResponse, Agent, ExtractResourceResponse, MyContractsResponse,
+        PurchaseShipResponse, RegisterResponse, Ship, ShipDockResponse, ShipNav,
+        ShipNavigateResponse, ShipOrbitResponse, ShipRefuelResponse, ShipType, Survey, Waypoint,
         WaypointTraitSymbol,
     },
     UserInfo,
@@ -30,25 +31,85 @@ impl<'a> Api<'a> {
         }
     }
 
-    pub async fn get_ship_nav_status(self: Self, ship_symbol: String) -> Result<ShipNav, Error> {
+    pub async fn extract_resource(
+        self: Self,
+        ship_symbol: String,
+        resource_survey: Option<Survey>,
+    ) -> ApiResult<ExtractResourceResponse> {
+        let url = format!("{}/my/ships/{ship_symbol}/extract", self.api_base_url);
+        let mut body = HashMap::new();
+        if let Some(survey) = resource_survey {
+            body.insert("survey", serde_json::to_string(&survey).unwrap());
+        }
+        let response = self
+            .client
+            .post(url)
+            .json(&body)
+            .bearer_auth(&self.user_info.token)
+            .send()
+            .await;
+        handle_api_response::<ExtractResourceResponse>(response).await
+    }
+
+    pub async fn refuel_ship(
+        self: Self,
+        ship_symbol: String,
+        maybe_units: Option<i32>,
+    ) -> ApiResult<ShipRefuelResponse> {
+        let url = format!("{}/my/ships/{ship_symbol}/refuel", self.api_base_url);
+        let mut body = HashMap::new();
+        if let Some(units_to_refuel) = maybe_units {
+            body.insert("units", units_to_refuel.to_string());
+        }
+        let response = self
+            .client
+            .post(url)
+            .json(&body)
+            .bearer_auth(&self.user_info.token)
+            .send()
+            .await;
+        handle_api_response::<ShipRefuelResponse>(response).await
+    }
+
+    pub async fn get_ship_status(self: Self, ship_symbol: String) -> ApiResult<Ship> {
+        let url = format!("{}/my/ships/{ship_symbol}", self.api_base_url);
+        let response = self
+            .client
+            .get(url)
+            .bearer_auth(&self.user_info.token)
+            .send()
+            .await;
+        handle_api_response::<Ship>(response).await
+    }
+
+    pub async fn dock_ship(self: Self, ship_symbol: String) -> ApiResult<ShipDockResponse> {
+        let url = format!("{}/my/ships/{ship_symbol}/dock", self.api_base_url);
+        let response = self
+            .client
+            .post(url)
+            .header("Content-Length", 0)
+            .bearer_auth(&self.user_info.token)
+            .send()
+            .await;
+        handle_api_response::<ShipDockResponse>(response).await
+    }
+
+    pub async fn get_ship_nav_status(self: Self, ship_symbol: String) -> ApiResult<ShipNav> {
         let url = format!("{}/my/ships/{ship_symbol}/nav", self.api_base_url);
         let response = self
             .client
             .get(url)
             .bearer_auth(&self.user_info.token)
             .send()
-            .await?
-            .json::<ApiResponse<ShipNav>>()
-            .await?;
-
-        Ok(response.data)
+            .await;
+        handle_api_response::<ShipNav>(response).await
     }
 
     pub async fn navigate_ship(
         self: Self,
         ship_symbol: String,
         waypoint_symbol: String,
-    ) -> Result<ShipNavigateResponse, Error> {
+    ) -> ApiResult<ShipNavigateResponse> {
         let url = format!("{}/my/ships/{ship_symbol}/navigate", self.api_base_url);
         let mut body = HashMap::new();
         body.insert("waypointSymbol", waypoint_symbol);
@@ -58,13 +119,11 @@ impl<'a> Api<'a> {
             .json(&body)
             .bearer_auth(&self.user_info.token)
             .send()
-            .await?
-            .json::<ApiResponse<ShipNavigateResponse>>()
-            .await?;
-        Ok(response.data)
+            .await;
+        handle_api_response::<ShipNavigateResponse>(response).await
     }
-
-    pub async fn orbit_ship(self: Self, ship_symbol: String) -> Result<ShipOrbitResponse, Error> {
+    //
+    pub async fn orbit_ship(self: Self, ship_symbol: String) -> ApiResult<ShipOrbitResponse> {
         let url = format!("{}/my/ships/{ship_symbol}/orbit", self.api_base_url);
         let response = self
             .client
@@ -72,31 +131,26 @@ impl<'a> Api<'a> {
             .bearer_auth(&self.user_info.token)
             .header("Content-Length", 0)
             .send()
-            .await?
-            .json::<ApiResponse<ShipOrbitResponse>>()
-            .await?;
-        Ok(response.data)
+            .await;
+        handle_api_response::<ShipOrbitResponse>(response).await
     }
-
-    pub async fn list_ships(self: Self) -> Result<Vec<Ship>, Error> {
+    //
+    pub async fn list_ships(self: Self) -> ApiResult<Vec<Ship>> {
         let url = self.api_base_url + "/my/ships";
         let response = self
             .client
             .get(url)
             .bearer_auth(&self.user_info.token)
             .send()
-            .await?
-            .json::<ApiResponse<Vec<Ship>>>()
-            .await?;
-
-        Ok(response.data)
+            .await;
+        handle_api_response::<Vec<Ship>>(response).await
     }
-
+    //
     pub async fn purchase_ship(
         self: Self,
         ship_type: ShipType,
         waypoint_symbol: String,
-    ) -> Result<PurchaseShipResponse, Error> {
+    ) -> ApiResult<PurchaseShipResponse> {
         let url = self.api_base_url + "/my/ships";
         let mut body = HashMap::new();
         body.insert("shipType", ship_type.to_string());
@@ -107,54 +161,56 @@ impl<'a> Api<'a> {
             .json(&body)
             .bearer_auth(&self.user_info.token)
             .send()
-            .await?
-            .json::<ApiResponse<PurchaseShipResponse>>()
-            .await?;
-        Ok(response.data)
+            .await;
+        handle_api_response::<PurchaseShipResponse>(response).await
     }
 
-    pub async fn fetch_agent_info(self: Self) -> Result<Agent, Error> {
+    pub async fn fetch_agent_info(self: Self) -> ApiResult<Agent> {
         let url = self.api_base_url + "/my/agent";
         let response = self
             .client
             .get(url)
             .bearer_auth(&self.user_info.token)
             .send()
-            .await?;
-        let response = response.json::<ApiResponse<Agent>>().await?;
-        Ok(response.data)
+            .await;
+        handle_api_response::<Agent>(response).await
     }
 
     pub async fn list_waypoints(
         self: Self,
         system_symbol: String,
         waypoint_trait: Option<WaypointTraitSymbol>,
-    ) -> Result<Vec<Waypoint>, Error> {
+    ) -> ApiResult<Vec<Waypoint>> {
         let url = format!("{API_BASE_URL}/systems/{system_symbol}/waypoints");
         let response = self
             .client
             .get(url)
             .bearer_auth(&self.user_info.token)
             .send()
-            .await?
-            .json::<ApiResponse<Vec<Waypoint>>>()
-            .await?;
+            .await;
+        let api_response = handle_api_response::<Vec<Waypoint>>(response)
+            .await
+            .unwrap();
         if let Some(filter) = waypoint_trait {
-            Ok(response
+            let new_data = api_response
                 .data
                 .iter()
                 .cloned()
                 .filter(|wp| wp.traits.iter().any(|tr| tr.symbol == filter))
-                .collect())
+                .collect();
+            Ok(ApiSuccessResponse {
+                data: new_data,
+                ..api_response
+            })
         } else {
-            Ok(response.data)
+            Ok(api_response)
         }
     }
 
     pub async fn accept_contract(
         self: Self,
         contract_id: String,
-    ) -> Result<AcceptContractResponse, Error> {
+    ) -> ApiResult<AcceptContractResponse> {
         let url = format!("{}/my/contracts/{}/accept", API_BASE_URL, contract_id);
         let response = self
             .client
@@ -164,30 +220,26 @@ impl<'a> Api<'a> {
             .header("Accept", "application/json")
             .header("Content-Length", 0)
             .send()
-            .await?
-            .json::<ApiResponse<AcceptContractResponse>>()
-            .await?;
-        Ok(response.data)
+            .await;
+        handle_api_response(response).await
     }
 
-    pub async fn fetch_contracts(self: Self) -> Result<MyContractsResponse, Error> {
+    pub async fn fetch_contracts(self: Self) -> ApiResult<MyContractsResponse> {
         let url = API_BASE_URL.to_owned() + "/my/contracts";
         let response = self
             .client
             .get(url)
             .bearer_auth(&self.user_info.token)
             .send()
-            .await?
-            .json::<ApiResponse<MyContractsResponse>>()
-            .await?;
-        Ok(response.data)
+            .await;
+        handle_api_response::<MyContractsResponse>(response).await
     }
 
     pub async fn register_player(
         self: Self,
         username: String,
         faction: String,
-    ) -> Result<RegisterResponse, Error> {
+    ) -> ApiResult<RegisterResponse> {
         println!("registering...");
         let mut body = HashMap::new();
         body.insert("symbol", username);
@@ -197,17 +249,45 @@ impl<'a> Api<'a> {
             .post(API_BASE_URL.to_owned() + "/register")
             .json(&body)
             .send()
-            .await?
-            .json::<ApiResponse<RegisterResponse>>()
-            .await?;
-        Ok(response.data)
+            .await;
+        handle_api_response::<RegisterResponse>(response).await
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-pub struct ApiResponse<T> {
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ApiSuccessResponse<T> {
     pub data: T,
     pub meta: Option<Meta>,
+}
+
+type ApiResult<T> = anyhow::Result<ApiSuccessResponse<T>, ApiError>;
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ApiErrorResponse {
+    error: ApiErrorObj,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ApiErrorObj {
+    message: String,
+    code: i32,
+    data: Option<HashMap<String, String>>,
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum ApiError {
+    #[error("HTTP API error")]
+    ServiceError {
+        status: u16,
+        message: String,
+        code: i32,
+        data: Option<HashMap<String, String>>,
+    },
+    #[error("Error parsing JSON response from API")]
+    ParseError { message: String },
+
+    #[error("Unknown error")]
+    UnknownError { message: String },
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -215,4 +295,32 @@ pub struct Meta {
     total: i32,
     page: i32,
     limit: i32,
+}
+
+pub async fn handle_api_response<T: DeserializeOwned>(
+    response: Result<Response, Error>,
+) -> ApiResult<T> {
+    match response {
+        Err(e) => Err(ApiError::UnknownError {
+            message: e.to_string(),
+        }),
+        Ok(api_response) => match api_response.status() {
+            StatusCode::OK => match api_response.json::<ApiSuccessResponse<T>>().await {
+                Ok(parsed) => Ok(parsed),
+                Err(error) => Err(ApiError::ParseError {
+                    message: error.to_string(),
+                }),
+            },
+
+            status_code => {
+                let service_response = api_response.json::<ApiErrorResponse>().await.unwrap();
+                Err(ApiError::ServiceError {
+                    message: service_response.error.message,
+                    code: service_response.error.code,
+                    status: status_code.as_u16(),
+                    data: service_response.error.data,
+                })
+            }
+        },
+    }
 }

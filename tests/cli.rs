@@ -12,7 +12,7 @@ mod cli_tests {
 
         use assert_cmd::Command;
         use assert_fs::prelude::{FileTouch, PathChild};
-        use space_traders_rust::{api::ApiResponse, domain::Agent, UserInfo};
+        use space_traders_rust::{api::ApiSuccessResponse, domain::Agent, UserInfo};
 
         #[test]
         fn reports_status() -> TestResult {
@@ -39,7 +39,7 @@ mod cli_tests {
                 starting_faction: "starting_faction_2".to_string(),
             };
 
-            let api_response: ApiResponse<Agent> = ApiResponse {
+            let api_response: ApiSuccessResponse<Agent> = ApiSuccessResponse {
                 data: api_response_agent,
                 meta: None,
             };
