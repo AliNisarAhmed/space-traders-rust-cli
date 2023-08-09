@@ -48,8 +48,14 @@ struct WaypointSubCommand {
 #[derive(Debug, Subcommand)]
 enum WaypointSubCommandArgs {
     List {
-        #[arg(short = 't')]
+        #[arg(short = 't', long)]
         filter: Option<WaypointTraitSymbol>,
+    },
+    Market {
+        #[arg(short = 's', long)]
+        system_symbol: String,
+        #[arg(short = 'w', long)]
+        waypoint_symbol: String,
     },
 }
 
@@ -65,6 +71,10 @@ enum ShipSubCommandArgs {
     Navigate {
         #[command(subcommand)]
         command: ShipNavigateSubCommandArgs,
+    },
+    Cargo {
+        #[command(subcommand)]
+        command: ShipCargoSubCommandArgs,
     },
     List,
     Purchase {
@@ -109,6 +119,22 @@ enum ShipNavigateSubCommandArgs {
         ship_symbol: String,
         #[arg(short, long)]
         waypoint_symbol: String,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum ShipCargoSubCommandArgs {
+    Status {
+        #[arg(short, long)]
+        ship_symbol: String,
+    },
+    Sell {
+        #[arg(short = 's', long)]
+        ship_symbol: String,
+        #[arg(short = 'g', long)]
+        good_symbol: TradeSymbol,
+        #[arg(short = 'u', long)]
+        units: u32,
     },
 }
 
@@ -162,6 +188,17 @@ pub async fn run<'a>(args: AppArgs, config: Config) -> MyResult<()> {
                         .await
                         .unwrap();
                     println!("{:#?}", res)
+                }
+                WaypointSubCommandArgs::Market {
+                    system_symbol,
+                    waypoint_symbol,
+                } => {
+                    let res = api.get_market(system_symbol, waypoint_symbol).await;
+
+                    match res {
+                        Ok(res) => println!("{:#?}", res),
+                        Err(e) => eprintln!("{:#?}", e),
+                    }
                 }
             },
             Some(Command::Ship(ShipSubCommand { command })) => match command {
@@ -233,6 +270,26 @@ pub async fn run<'a>(args: AppArgs, config: Config) -> MyResult<()> {
                         match res {
                             Ok(res) => println!("{:#?}", res),
                             Err(e) => println!("{:#?}", e),
+                        }
+                    }
+                },
+                ShipSubCommandArgs::Cargo { command } => match command {
+                    ShipCargoSubCommandArgs::Status { ship_symbol } => {
+                        let res = api.get_ship_cargo(ship_symbol).await;
+                        match res {
+                            Ok(res) => println!("{:#?}", res),
+                            Err(e) => eprintln!("{:#?}", e),
+                        }
+                    }
+                    ShipCargoSubCommandArgs::Sell {
+                        ship_symbol,
+                        good_symbol,
+                        units,
+                    } => {
+                        let res = api.sell_ship_cargo(ship_symbol, good_symbol, units).await;
+                        match res {
+                            Ok(res) => println!("{:#?}", res),
+                            Err(e) => eprintln!("{:#?}", e),
                         }
                     }
                 },

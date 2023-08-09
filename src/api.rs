@@ -5,10 +5,10 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 use crate::{
     domain::{
-        AcceptContractResponse, Agent, ExtractResourceResponse, MyContractsResponse,
-        PurchaseShipResponse, RegisterResponse, Ship, ShipDockResponse, ShipNav,
-        ShipNavigateResponse, ShipOrbitResponse, ShipRefuelResponse, ShipType, Survey, Waypoint,
-        WaypointTraitSymbol,
+        AcceptContractResponse, Agent, ExtractResourceResponse, Market, MyContractsResponse,
+        PurchaseShipResponse, RegisterResponse, SellCargoResponse, Ship, ShipCargo,
+        ShipDockResponse, ShipNav, ShipNavigateResponse, ShipOrbitResponse, ShipRefuelResponse,
+        ShipType, Survey, TradeSymbol, Waypoint, WaypointTraitSymbol,
     },
     UserInfo,
 };
@@ -31,6 +31,55 @@ impl<'a> Api<'a> {
         }
     }
 
+    pub async fn get_market(
+        self: Self,
+        system_symbol: String,
+        waypoint_symbol: String,
+    ) -> ApiResult<Market> {
+        let url = format!(
+            "{}/systems/{system_symbol}/waypoints/{waypoint_symbol}/market",
+            self.api_base_url
+        );
+        let response = self
+            .client
+            .get(url)
+            .bearer_auth(&self.user_info.token)
+            .send()
+            .await;
+        handle_api_response(response).await
+    }
+
+    pub async fn sell_ship_cargo(
+        self: Self,
+        ship_symbol: String,
+        good_type: TradeSymbol,
+        units: u32,
+    ) -> ApiResult<SellCargoResponse> {
+        let url = format!("{}/my/ships/{ship_symbol}/sell", self.api_base_url);
+        let mut body = HashMap::new();
+        body.insert("symbol", good_type.to_string());
+        body.insert("units", units.to_string());
+        let response = self
+            .client
+            .post(url)
+            .json(&body)
+            .bearer_auth(&self.user_info.token)
+            .send()
+            .await;
+        dbg!(&response);
+        handle_api_response(response).await
+    }
+
+    pub async fn get_ship_cargo(self: Self, ship_symbol: String) -> ApiResult<ShipCargo> {
+        let url = format!("{}/my/ships/{ship_symbol}/cargo", self.api_base_url);
+        let response = self
+            .client
+            .get(url)
+            .bearer_auth(&self.user_info.token)
+            .send()
+            .await;
+        handle_api_response(response).await
+    }
     pub async fn extract_resource(
         self: Self,
         ship_symbol: String,
@@ -48,7 +97,7 @@ impl<'a> Api<'a> {
             .bearer_auth(&self.user_info.token)
             .send()
             .await;
-        handle_api_response::<ExtractResourceResponse>(response).await
+        handle_api_response(response).await
     }
 
     pub async fn refuel_ship(
@@ -68,7 +117,7 @@ impl<'a> Api<'a> {
             .bearer_auth(&self.user_info.token)
             .send()
             .await;
-        handle_api_response::<ShipRefuelResponse>(response).await
+        handle_api_response(response).await
     }
 
     pub async fn get_ship_status(self: Self, ship_symbol: String) -> ApiResult<Ship> {
@@ -79,7 +128,7 @@ impl<'a> Api<'a> {
             .bearer_auth(&self.user_info.token)
             .send()
             .await;
-        handle_api_response::<Ship>(response).await
+        handle_api_response(response).await
     }
 
     pub async fn dock_ship(self: Self, ship_symbol: String) -> ApiResult<ShipDockResponse> {
@@ -91,7 +140,7 @@ impl<'a> Api<'a> {
             .bearer_auth(&self.user_info.token)
             .send()
             .await;
-        handle_api_response::<ShipDockResponse>(response).await
+        handle_api_response(response).await
     }
 
     pub async fn get_ship_nav_status(self: Self, ship_symbol: String) -> ApiResult<ShipNav> {
@@ -102,7 +151,7 @@ impl<'a> Api<'a> {
             .bearer_auth(&self.user_info.token)
             .send()
             .await;
-        handle_api_response::<ShipNav>(response).await
+        handle_api_response(response).await
     }
 
     pub async fn navigate_ship(
@@ -120,7 +169,7 @@ impl<'a> Api<'a> {
             .bearer_auth(&self.user_info.token)
             .send()
             .await;
-        handle_api_response::<ShipNavigateResponse>(response).await
+        handle_api_response(response).await
     }
     //
     pub async fn orbit_ship(self: Self, ship_symbol: String) -> ApiResult<ShipOrbitResponse> {
@@ -132,7 +181,7 @@ impl<'a> Api<'a> {
             .header("Content-Length", 0)
             .send()
             .await;
-        handle_api_response::<ShipOrbitResponse>(response).await
+        handle_api_response(response).await
     }
     //
     pub async fn list_ships(self: Self) -> ApiResult<Vec<Ship>> {
@@ -143,7 +192,7 @@ impl<'a> Api<'a> {
             .bearer_auth(&self.user_info.token)
             .send()
             .await;
-        handle_api_response::<Vec<Ship>>(response).await
+        handle_api_response(response).await
     }
     //
     pub async fn purchase_ship(
@@ -162,7 +211,7 @@ impl<'a> Api<'a> {
             .bearer_auth(&self.user_info.token)
             .send()
             .await;
-        handle_api_response::<PurchaseShipResponse>(response).await
+        handle_api_response(response).await
     }
 
     pub async fn fetch_agent_info(self: Self) -> ApiResult<Agent> {
@@ -173,7 +222,7 @@ impl<'a> Api<'a> {
             .bearer_auth(&self.user_info.token)
             .send()
             .await;
-        handle_api_response::<Agent>(response).await
+        handle_api_response(response).await
     }
 
     pub async fn list_waypoints(
@@ -232,7 +281,7 @@ impl<'a> Api<'a> {
             .bearer_auth(&self.user_info.token)
             .send()
             .await;
-        handle_api_response::<MyContractsResponse>(response).await
+        handle_api_response(response).await
     }
 
     pub async fn register_player(
@@ -250,7 +299,7 @@ impl<'a> Api<'a> {
             .json(&body)
             .send()
             .await;
-        handle_api_response::<RegisterResponse>(response).await
+        handle_api_response(response).await
     }
 }
 
@@ -304,15 +353,17 @@ pub async fn handle_api_response<T: DeserializeOwned>(
         Err(e) => Err(ApiError::UnknownError {
             message: e.to_string(),
         }),
-        Ok(api_response) => match api_response.status() {
-            StatusCode::OK => match api_response.json::<ApiSuccessResponse<T>>().await {
-                Ok(parsed) => Ok(parsed),
-                Err(error) => Err(ApiError::ParseError {
-                    message: error.to_string(),
-                }),
-            },
+        Ok(api_response) => {
+            let status_code = api_response.status();
 
-            status_code => {
+            if status_code.is_success() {
+                match api_response.json::<ApiSuccessResponse<T>>().await {
+                    Ok(parsed) => Ok(parsed),
+                    Err(error) => Err(ApiError::ParseError {
+                        message: error.to_string(),
+                    }),
+                }
+            } else {
                 let service_response = api_response.json::<ApiErrorResponse>().await.unwrap();
                 Err(ApiError::ServiceError {
                     message: service_response.error.message,
@@ -321,6 +372,6 @@ pub async fn handle_api_response<T: DeserializeOwned>(
                     data: service_response.error.data,
                 })
             }
-        },
+        }
     }
 }

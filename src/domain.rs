@@ -20,7 +20,6 @@ impl Agent {
 
     pub fn get_system(&self) -> String {
         let vec: Vec<&str> = self.headquarters.split("-").collect();
-        // format!("{vec[0]}-{vec[1]}")
         String::from(vec[0]) + "-" + vec[1]
     }
 
@@ -88,6 +87,13 @@ pub struct ExtractResourceResponse {
     pub cargo: ShipCargo,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SellCargoResponse {
+    pub agent: Agent,
+    pub cargo: ShipCargo,
+    pub transaction: MarketTransaction,
+}
 // ---------------------------------------------
 
 #[derive(Debug, Deserialize)]
@@ -609,7 +615,7 @@ pub struct ExtractionYield {
     pub units: i32,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Display, Debug, Serialize, Deserialize, ValueEnum, Clone)]
 pub enum TradeSymbol {
     PRECIOUS_STONES,
     QUARTZ_SAND,
@@ -735,4 +741,41 @@ pub struct Survey {
 #[serde(rename_all = "camelCase")]
 pub struct SurveyDeposit {
     symbol: Deposit,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Market {
+    pub symbol: String,
+    pub exports: Vec<TradeGood>,
+    pub imports: Vec<TradeGood>,
+    pub exchange: Vec<TradeGood>,
+    pub transactions: Vec<MarketTransaction>,
+    pub trade_goods: Vec<MarketTradeGood>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TradeGood {
+    pub symbol: TradeSymbol,
+    pub name: String,
+    pub description: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MarketTradeGood {
+    pub symbol: String,
+    pub trade_volume: u32,
+    pub supply: Supply,
+    pub purchase_price: u32,
+    pub sell_price: u32,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum Supply {
+    SCARCE,
+    LIMITED,
+    MODERATE,
+    ABUNDANT,
 }
