@@ -1,14 +1,16 @@
 use std::{collections::HashMap, env};
 
-use reqwest::{Client, Error, Response, StatusCode};
+use reqwest::{Client, Error, Response};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde_json::Value;
 
 use crate::{
     domain::{
-        AcceptContractResponse, Agent, ExtractResourceResponse, Market, MyContractsResponse,
-        PurchaseShipResponse, RegisterResponse, SellCargoResponse, Ship, ShipCargo,
-        ShipDockResponse, ShipNav, ShipNavigateResponse, ShipOrbitResponse, ShipRefuelResponse,
-        ShipType, Survey, TradeSymbol, Waypoint, WaypointTraitSymbol,
+        AcceptContractResponse, Agent, DeliverCargoResponse, ExtractResourceResponse,
+        FulfillContractResponse, Market, MyContractsResponse, PurchaseShipResponse,
+        RegisterResponse, SellCargoResponse, Ship, ShipCargo, ShipDockResponse, ShipNav,
+        ShipNavigateResponse, ShipOrbitResponse, ShipRefuelResponse, ShipType, Survey, TradeSymbol,
+        Waypoint, WaypointTraitSymbol, Shipyard,
     },
     UserInfo,
 };
@@ -29,6 +31,42 @@ impl<'a> Api<'a> {
             api_base_url: url,
             user_info,
         }
+    }
+
+    pub async fn fulfill_contract(
+        self: Self,
+        contract_id: String,
+    ) -> ApiResult<FulfillContractResponse> {
+        let url = format!("{}/my/contracts/{contract_id}/fulfill", self.api_base_url);
+        let response = self
+            .client
+            .get(url)
+            .bearer_auth(&self.user_info.token)
+            .send()
+            .await;
+        handle_api_response(response).await
+    }
+
+    pub async fn deliver_contract_goods(
+        self: Self,
+        ship_symbol: String,
+        contract_id: String,
+        trade_symbol: TradeSymbol,
+        units: u32,
+    ) -> ApiResult<DeliverCargoResponse> {
+        let url = format!("{}/my/contracts/{contract_id}/deliver", self.api_base_url);
+        let mut body = HashMap::new();
+        body.insert("shipSymbol", ship_symbol.to_string());
+        body.insert("tradeSymbol", trade_symbol.to_string());
+        body.insert("units", units.to_string());
+        let response = self
+            .client
+            .post(url)
+            .json(&body)
+            .bearer_auth(&self.user_info.token)
+            .send()
+            .await;
+        handle_api_response(response).await
     }
 
     pub async fn get_market(
@@ -256,6 +294,39 @@ impl<'a> Api<'a> {
         }
     }
 
+    pub async fn get_shipyard_for_waypoint(
+        self: Self,
+        waypoint_symbol: String,
+    ) -> ApiResult<Shipyard> {
+        let system_symbol = Waypoint::get_system_id(&waypoint_symbol);
+        let url = format!(
+            "{}/systems/{system_symbol}/waypoints/{waypoint_symbol}/shipyard",
+            self.api_base_url
+        );
+        let response = self
+            .client
+            .get(url)
+            .bearer_auth(&self.user_info.token)
+            .send()
+            .await;
+        handle_api_response(response).await
+    }
+
+    pub async fn get_waypoint(self: Self, waypoint_symbol: String) -> ApiResult<Waypoint> {
+        let system_symbol = Waypoint::get_system_id(&waypoint_symbol);
+        let url = format!(
+            "{}/systems/{system_symbol}/waypoints/{waypoint_symbol}",
+            self.api_base_url
+        );
+        let response = self
+            .client
+            .get(url)
+            .bearer_auth(&self.user_info.token)
+            .send()
+            .await;
+        handle_api_response(response).await
+    }
+
     pub async fn accept_contract(
         self: Self,
         contract_id: String,
@@ -320,7 +391,7 @@ pub struct ApiErrorResponse {
 pub struct ApiErrorObj {
     message: String,
     code: i32,
-    data: Option<HashMap<String, String>>,
+    data: Option<HashMap<String, Value>>,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -330,7 +401,7 @@ pub enum ApiError {
         status: u16,
         message: String,
         code: i32,
-        data: Option<HashMap<String, String>>,
+        data: Option<HashMap<String, Value>>,
     },
     #[error("Error parsing JSON response from API")]
     ParseError { message: String },

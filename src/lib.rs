@@ -21,21 +21,47 @@ pub struct AppArgs {
 enum Command {
     Status,
     Register {
-        #[arg(short, long)]
+        #[arg(short = 'u', long)]
         username: String,
 
-        #[arg(short, long, default_value_t=String::from("COSMIC"))]
+        #[arg(short = 'f', long, default_value_t=String::from("COSMIC"))]
         faction: String,
     },
-    MyContracts,
-    AcceptContract {
-        #[arg(short, long)]
-        contract_id: String,
-    },
+    Contract(ContractSubCommand),
     #[command(alias = "whoami")]
     WhoAmI,
     Waypoints(WaypointSubCommand),
     Ship(ShipSubCommand),
+}
+
+#[derive(Debug, Args)]
+#[command(args_conflicts_with_subcommands = true)]
+struct ContractSubCommand {
+    #[command(subcommand)]
+    command: ContractSubCommandArgs,
+}
+
+#[derive(Debug, Subcommand)]
+enum ContractSubCommandArgs {
+    List,
+    Accept {
+        #[arg(short = 'c', long)]
+        contract_id: String,
+    },
+    Deliver {
+        #[arg(short = 's', long)]
+        ship_symbol: String,
+        #[arg(short = 'c', long)]
+        contract_id: String,
+        #[arg(short = 't', long)]
+        trade_symbol: TradeSymbol,
+        #[arg(short = 'u', long)]
+        units: u32,
+    },
+    Fulfill {
+        #[arg(short = 'c', long)]
+        contract_id: String,
+    },
 }
 
 #[derive(Debug, Args)]
@@ -47,6 +73,10 @@ struct WaypointSubCommand {
 
 #[derive(Debug, Subcommand)]
 enum WaypointSubCommandArgs {
+    Get {
+        #[arg(short = 'w', long)]
+        waypoint_symbol: String,
+    },
     List {
         #[arg(short = 't', long)]
         filter: Option<WaypointTraitSymbol>,
@@ -54,6 +84,10 @@ enum WaypointSubCommandArgs {
     Market {
         #[arg(short = 's', long)]
         system_symbol: String,
+        #[arg(short = 'w', long)]
+        waypoint_symbol: String,
+    },
+    Shipyard {
         #[arg(short = 'w', long)]
         waypoint_symbol: String,
     },
@@ -78,9 +112,9 @@ enum ShipSubCommandArgs {
     },
     List,
     Purchase {
-        #[arg(short, long)]
+        #[arg(short = 's', long)]
         ship_type: ShipType,
-        #[arg(short, long)]
+        #[arg(short = 'w', long)]
         waypoint_symbol: String,
     },
     Orbit {
@@ -88,18 +122,18 @@ enum ShipSubCommandArgs {
         ship_symbol: String,
     },
     Dock {
-        #[arg(short, long)]
+        #[arg(short = 's', long)]
         ship_symbol: String,
     },
     Status {
-        #[arg(short, long)]
+        #[arg(short = 's', long)]
         ship_symbol: String,
     },
     Refuel {
         #[arg(short = 's', long)]
         ship_symbol: String,
 
-        #[arg(short, long)]
+        #[arg(short = 'u', long)]
         units: Option<i32>,
     },
     Extract {
@@ -111,13 +145,13 @@ enum ShipSubCommandArgs {
 #[derive(Debug, Subcommand)]
 enum ShipNavigateSubCommandArgs {
     Status {
-        #[arg(short, long)]
+        #[arg(short = 's', long)]
         ship_symbol: String,
     },
     Waypoint {
-        #[arg(short, long)]
+        #[arg(short = 's', long)]
         ship_symbol: String,
-        #[arg(short, long)]
+        #[arg(short = 'w', long)]
         waypoint_symbol: String,
     },
 }
@@ -125,7 +159,7 @@ enum ShipNavigateSubCommandArgs {
 #[derive(Debug, Subcommand)]
 enum ShipCargoSubCommandArgs {
     Status {
-        #[arg(short, long)]
+        #[arg(short = 's', long)]
         ship_symbol: String,
     },
     Sell {
@@ -173,15 +207,51 @@ pub async fn run<'a>(args: AppArgs, config: Config) -> MyResult<()> {
                     Err(e) => println!("{:#?}", e),
                 }
             }
-            Some(Command::MyContracts) => {
-                let res = api.fetch_contracts().await.unwrap();
-                println!("{:#?}", res)
-            }
-            Some(Command::AcceptContract { contract_id }) => {
-                let res = api.accept_contract(contract_id).await.unwrap();
-                println!("{:#?}", res)
-            }
+            Some(Command::Contract(ContractSubCommand { command })) => match command {
+                ContractSubCommandArgs::List => {
+                    let res = api.fetch_contracts().await;
+                    match res {
+                        Ok(res) => println!("{:#?}", res),
+                        Err(e) => eprintln!("{:#?}", e),
+                    }
+                }
+                ContractSubCommandArgs::Accept { contract_id } => {
+                    let res = api.accept_contract(contract_id).await;
+                    match res {
+                        Ok(res) => println!("{:#?}", res),
+                        Err(e) => eprintln!("{:#?}", e),
+                    }
+                }
+                ContractSubCommandArgs::Deliver {
+                    ship_symbol,
+                    contract_id,
+                    trade_symbol,
+                    units,
+                } => {
+                    let res = api
+                        .deliver_contract_goods(ship_symbol, contract_id, trade_symbol, units)
+                        .await;
+                    match res {
+                        Ok(res) => println!("{:#?}", res),
+                        Err(e) => eprintln!("{:#?}", e),
+                    }
+                }
+                ContractSubCommandArgs::Fulfill { contract_id } => {
+                    let res = api.fulfill_contract(contract_id).await;
+                    match res {
+                        Ok(res) => println!("{:#?}", res),
+                        Err(e) => eprintln!("{:#?}", e),
+                    }
+                }
+            },
             Some(Command::Waypoints(WaypointSubCommand { command })) => match command {
+                WaypointSubCommandArgs::Get { waypoint_symbol } => {
+                    let res = api.get_waypoint(waypoint_symbol).await;
+                    match res {
+                        Ok(res) => println!("{:#?}", res),
+                        Err(e) => eprintln!("{:#?}", e),
+                    }
+                }
                 WaypointSubCommandArgs::List { filter } => {
                     let res = api
                         .list_waypoints(user_info.agent.get_system(), filter)
@@ -194,7 +264,13 @@ pub async fn run<'a>(args: AppArgs, config: Config) -> MyResult<()> {
                     waypoint_symbol,
                 } => {
                     let res = api.get_market(system_symbol, waypoint_symbol).await;
-
+                    match res {
+                        Ok(res) => println!("{:#?}", res),
+                        Err(e) => eprintln!("{:#?}", e),
+                    }
+                }
+                WaypointSubCommandArgs::Shipyard { waypoint_symbol } => {
+                    let res = api.get_shipyard_for_waypoint(waypoint_symbol).await;
                     match res {
                         Ok(res) => println!("{:#?}", res),
                         Err(e) => eprintln!("{:#?}", e),

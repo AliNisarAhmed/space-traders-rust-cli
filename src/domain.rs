@@ -94,6 +94,21 @@ pub struct SellCargoResponse {
     pub cargo: ShipCargo,
     pub transaction: MarketTransaction,
 }
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeliverCargoResponse {
+    pub cargo: ShipCargo,
+    pub contract: Contract,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FulfillContractResponse {
+    pub agent: Agent,
+    pub contract: Contract,
+}
+
 // ---------------------------------------------
 
 #[derive(Debug, Deserialize)]
@@ -147,6 +162,13 @@ pub struct Waypoint {
     pub faction: Faction,
     pub traits: Vec<WaypointTrait>,
     pub chart: Chart,
+}
+
+impl Waypoint {
+    pub fn get_system_id(waypoint_symbol: &str) -> String {
+        let vec: Vec<&str> = waypoint_symbol.split("-").collect();
+        String::from(vec[0]) + "-" + vec[1]
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -778,4 +800,45 @@ pub enum Supply {
     LIMITED,
     MODERATE,
     ABUNDANT,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Shipyard {
+    pub symbol: String,
+    pub ship_types: Vec<ShipyardShipTypes>,
+    pub transactions: Vec<ShipyardTransaction>,
+    pub ships: Vec<ShipyardShip>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShipyardTransaction {
+    pub waypoint_symbol: String,
+    pub ship_symbol: String,
+    pub price: u32,
+    pub agent_symbol: String,
+    pub timestamp: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShipyardShip {
+    #[serde(rename = "type")]
+    pub ship_type: ShipType,
+    pub name: String,
+    pub description: String,
+    pub purchase_price: u32,
+    pub frame: ShipFrame,
+    pub reactor: ShipReactor,
+    pub engine: ShipEngine,
+    pub modules: Vec<ShipModule>,
+    pub mounts: Vec<ShipMount>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShipyardShipTypes {
+    #[serde(rename = "type")]
+    pub ship_type: ShipType,
 }
