@@ -30,7 +30,7 @@ enum Command {
     Contract(ContractSubCommand),
     #[command(alias = "whoami")]
     WhoAmI,
-    Waypoints(WaypointSubCommand),
+    Waypoint(WaypointSubCommand),
     Ship(ShipSubCommand),
 }
 
@@ -79,11 +79,11 @@ enum WaypointSubCommandArgs {
     },
     List {
         #[arg(short = 't', long)]
-        filter: Option<WaypointTraitSymbol>,
+        filter_by_trait: Option<WaypointTraitSymbol>,
+        #[arg(short = 'w', long)]
+        filter_by_type: Option<WaypointType>,
     },
     Market {
-        #[arg(short = 's', long)]
-        system_symbol: String,
         #[arg(short = 'w', long)]
         waypoint_symbol: String,
     },
@@ -137,6 +137,10 @@ enum ShipSubCommandArgs {
         units: Option<i32>,
     },
     Extract {
+        #[arg(short = 's', long)]
+        ship_symbol: String,
+    },
+    Survey {
         #[arg(short = 's', long)]
         ship_symbol: String,
     },
@@ -244,7 +248,7 @@ pub async fn run<'a>(args: AppArgs, config: Config) -> MyResult<()> {
                     }
                 }
             },
-            Some(Command::Waypoints(WaypointSubCommand { command })) => match command {
+            Some(Command::Waypoint(WaypointSubCommand { command })) => match command {
                 WaypointSubCommandArgs::Get { waypoint_symbol } => {
                     let res = api.get_waypoint(waypoint_symbol).await;
                     match res {
@@ -252,18 +256,22 @@ pub async fn run<'a>(args: AppArgs, config: Config) -> MyResult<()> {
                         Err(e) => eprintln!("{:#?}", e),
                     }
                 }
-                WaypointSubCommandArgs::List { filter } => {
+                WaypointSubCommandArgs::List {
+                    filter_by_trait,
+                    filter_by_type,
+                } => {
                     let res = api
-                        .list_waypoints(user_info.agent.get_system(), filter)
+                        .list_waypoints(
+                            user_info.agent.get_system(),
+                            filter_by_trait,
+                            filter_by_type,
+                        )
                         .await
                         .unwrap();
                     println!("{:#?}", res)
                 }
-                WaypointSubCommandArgs::Market {
-                    system_symbol,
-                    waypoint_symbol,
-                } => {
-                    let res = api.get_market(system_symbol, waypoint_symbol).await;
+                WaypointSubCommandArgs::Market { waypoint_symbol } => {
+                    let res = api.get_market(waypoint_symbol).await;
                     match res {
                         Ok(res) => println!("{:#?}", res),
                         Err(e) => eprintln!("{:#?}", e),
@@ -278,6 +286,13 @@ pub async fn run<'a>(args: AppArgs, config: Config) -> MyResult<()> {
                 }
             },
             Some(Command::Ship(ShipSubCommand { command })) => match command {
+                ShipSubCommandArgs::Survey { ship_symbol } => {
+                    let res = api.create_survey(ship_symbol).await;
+                    match res {
+                        Ok(res) => println!("{:#?}", res),
+                        Err(e) => println!("{:#?}", e),
+                    }
+                }
                 ShipSubCommandArgs::Purchase {
                     ship_type,
                     waypoint_symbol,

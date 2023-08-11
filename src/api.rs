@@ -9,8 +9,8 @@ use crate::{
         AcceptContractResponse, Agent, DeliverCargoResponse, ExtractResourceResponse,
         FulfillContractResponse, Market, MyContractsResponse, PurchaseShipResponse,
         RegisterResponse, SellCargoResponse, Ship, ShipCargo, ShipDockResponse, ShipNav,
-        ShipNavigateResponse, ShipOrbitResponse, ShipRefuelResponse, ShipType, Survey, TradeSymbol,
-        Waypoint, WaypointTraitSymbol, Shipyard,
+        ShipNavigateResponse, ShipOrbitResponse, ShipRefuelResponse, ShipType, Shipyard, Survey,
+        TradeSymbol, Waypoint, WaypointTraitSymbol, WaypointType,
     },
     UserInfo,
 };
@@ -33,91 +33,8 @@ impl<'a> Api<'a> {
         }
     }
 
-    pub async fn fulfill_contract(
-        self: Self,
-        contract_id: String,
-    ) -> ApiResult<FulfillContractResponse> {
-        let url = format!("{}/my/contracts/{contract_id}/fulfill", self.api_base_url);
-        let response = self
-            .client
-            .get(url)
-            .bearer_auth(&self.user_info.token)
-            .send()
-            .await;
-        handle_api_response(response).await
-    }
+    // ------------ SHIP ------------
 
-    pub async fn deliver_contract_goods(
-        self: Self,
-        ship_symbol: String,
-        contract_id: String,
-        trade_symbol: TradeSymbol,
-        units: u32,
-    ) -> ApiResult<DeliverCargoResponse> {
-        let url = format!("{}/my/contracts/{contract_id}/deliver", self.api_base_url);
-        let mut body = HashMap::new();
-        body.insert("shipSymbol", ship_symbol.to_string());
-        body.insert("tradeSymbol", trade_symbol.to_string());
-        body.insert("units", units.to_string());
-        let response = self
-            .client
-            .post(url)
-            .json(&body)
-            .bearer_auth(&self.user_info.token)
-            .send()
-            .await;
-        handle_api_response(response).await
-    }
-
-    pub async fn get_market(
-        self: Self,
-        system_symbol: String,
-        waypoint_symbol: String,
-    ) -> ApiResult<Market> {
-        let url = format!(
-            "{}/systems/{system_symbol}/waypoints/{waypoint_symbol}/market",
-            self.api_base_url
-        );
-        let response = self
-            .client
-            .get(url)
-            .bearer_auth(&self.user_info.token)
-            .send()
-            .await;
-        handle_api_response(response).await
-    }
-
-    pub async fn sell_ship_cargo(
-        self: Self,
-        ship_symbol: String,
-        good_type: TradeSymbol,
-        units: u32,
-    ) -> ApiResult<SellCargoResponse> {
-        let url = format!("{}/my/ships/{ship_symbol}/sell", self.api_base_url);
-        let mut body = HashMap::new();
-        body.insert("symbol", good_type.to_string());
-        body.insert("units", units.to_string());
-        let response = self
-            .client
-            .post(url)
-            .json(&body)
-            .bearer_auth(&self.user_info.token)
-            .send()
-            .await;
-        dbg!(&response);
-        handle_api_response(response).await
-    }
-
-    pub async fn get_ship_cargo(self: Self, ship_symbol: String) -> ApiResult<ShipCargo> {
-        let url = format!("{}/my/ships/{ship_symbol}/cargo", self.api_base_url);
-        let response = self
-            .client
-            .get(url)
-            .bearer_auth(&self.user_info.token)
-            .send()
-            .await;
-        handle_api_response(response).await
-    }
     pub async fn extract_resource(
         self: Self,
         ship_symbol: String,
@@ -209,7 +126,7 @@ impl<'a> Api<'a> {
             .await;
         handle_api_response(response).await
     }
-    //
+
     pub async fn orbit_ship(self: Self, ship_symbol: String) -> ApiResult<ShipOrbitResponse> {
         let url = format!("{}/my/ships/{ship_symbol}/orbit", self.api_base_url);
         let response = self
@@ -221,7 +138,7 @@ impl<'a> Api<'a> {
             .await;
         handle_api_response(response).await
     }
-    //
+
     pub async fn list_ships(self: Self) -> ApiResult<Vec<Ship>> {
         let url = self.api_base_url + "/my/ships";
         let response = self
@@ -232,7 +149,7 @@ impl<'a> Api<'a> {
             .await;
         handle_api_response(response).await
     }
-    //
+
     pub async fn purchase_ship(
         self: Self,
         ship_type: ShipType,
@@ -246,6 +163,104 @@ impl<'a> Api<'a> {
             .client
             .post(url)
             .json(&body)
+            .bearer_auth(&self.user_info.token)
+            .send()
+            .await;
+        handle_api_response(response).await
+    }
+
+    pub async fn create_survey(self: Self, ship_symbol: String) -> ApiResult<Survey> {
+        let url = format!("{}/my/ships/{ship_symbol}/survey", self.api_base_url);
+        let response = self
+            .client
+            .post(url)
+            .header("Content-Length", 0)
+            .bearer_auth(&self.user_info.token)
+            .send()
+            .await;
+        handle_api_response(response).await
+    }
+
+    pub async fn sell_ship_cargo(
+        self: Self,
+        ship_symbol: String,
+        good_type: TradeSymbol,
+        units: u32,
+    ) -> ApiResult<SellCargoResponse> {
+        let url = format!("{}/my/ships/{ship_symbol}/sell", self.api_base_url);
+        let mut body = HashMap::new();
+        body.insert("symbol", good_type.to_string());
+        body.insert("units", units.to_string());
+        let response = self
+            .client
+            .post(url)
+            .json(&body)
+            .bearer_auth(&self.user_info.token)
+            .send()
+            .await;
+        handle_api_response(response).await
+    }
+
+    pub async fn get_ship_cargo(self: Self, ship_symbol: String) -> ApiResult<ShipCargo> {
+        let url = format!("{}/my/ships/{ship_symbol}/cargo", self.api_base_url);
+        let response = self
+            .client
+            .get(url)
+            .bearer_auth(&self.user_info.token)
+            .send()
+            .await;
+        handle_api_response(response).await
+    }
+
+    // ------------ CONTRACT ------------
+
+    pub async fn fulfill_contract(
+        self: Self,
+        contract_id: String,
+    ) -> ApiResult<FulfillContractResponse> {
+        let url = format!("{}/my/contracts/{contract_id}/fulfill", self.api_base_url);
+        let response = self
+            .client
+            .get(url)
+            .bearer_auth(&self.user_info.token)
+            .send()
+            .await;
+        handle_api_response(response).await
+    }
+
+    pub async fn deliver_contract_goods(
+        self: Self,
+        ship_symbol: String,
+        contract_id: String,
+        trade_symbol: TradeSymbol,
+        units: u32,
+    ) -> ApiResult<DeliverCargoResponse> {
+        let url = format!("{}/my/contracts/{contract_id}/deliver", self.api_base_url);
+        let mut body = HashMap::new();
+        body.insert("shipSymbol", ship_symbol.to_string());
+        body.insert("tradeSymbol", trade_symbol.to_string());
+        body.insert("units", units.to_string());
+        let response = self
+            .client
+            .post(url)
+            .json(&body)
+            .bearer_auth(&self.user_info.token)
+            .send()
+            .await;
+        handle_api_response(response).await
+    }
+
+    // ------------ WAYPOINT ------------
+
+    pub async fn get_market(self: Self, waypoint_symbol: String) -> ApiResult<Market> {
+        let system_symbol = Waypoint::get_system_id(&waypoint_symbol);
+        let url = format!(
+            "{}/systems/{system_symbol}/waypoints/{waypoint_symbol}/market",
+            self.api_base_url
+        );
+        let response = self
+            .client
+            .get(url)
             .bearer_auth(&self.user_info.token)
             .send()
             .await;
@@ -266,7 +281,8 @@ impl<'a> Api<'a> {
     pub async fn list_waypoints(
         self: Self,
         system_symbol: String,
-        waypoint_trait: Option<WaypointTraitSymbol>,
+        trait_filter: Option<WaypointTraitSymbol>,
+        type_filter: Option<WaypointType>,
     ) -> ApiResult<Vec<Waypoint>> {
         let url = format!("{API_BASE_URL}/systems/{system_symbol}/waypoints");
         let response = self
@@ -278,20 +294,24 @@ impl<'a> Api<'a> {
         let api_response = handle_api_response::<Vec<Waypoint>>(response)
             .await
             .unwrap();
-        if let Some(filter) = waypoint_trait {
-            let new_data = api_response
-                .data
-                .iter()
-                .cloned()
-                .filter(|wp| wp.traits.iter().any(|tr| tr.symbol == filter))
-                .collect();
-            Ok(ApiSuccessResponse {
-                data: new_data,
-                ..api_response
+
+        let new_data = Vec::into_iter(api_response.data)
+            .filter(|wp| {
+                trait_filter.is_none()
+                    || wp
+                        .traits
+                        .iter()
+                        .any(|tr| tr.symbol == trait_filter.unwrap())
             })
-        } else {
-            Ok(api_response)
-        }
+            .filter(move |w| {
+                type_filter.is_none() || w.waypoint_type == type_filter.clone().unwrap()
+            })
+            .collect();
+
+        Ok(ApiSuccessResponse {
+            data: new_data,
+            ..api_response
+        })
     }
 
     pub async fn get_shipyard_for_waypoint(
@@ -354,6 +374,8 @@ impl<'a> Api<'a> {
             .await;
         handle_api_response(response).await
     }
+
+    // ------------ AUTH ----------
 
     pub async fn register_player(
         self: Self,

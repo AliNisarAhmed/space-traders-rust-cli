@@ -171,7 +171,7 @@ impl Waypoint {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(PartialEq, Debug, Serialize, Deserialize, Clone, ValueEnum)]
 pub enum WaypointType {
     PLANET,
     GAS_GIANT,
@@ -757,6 +757,15 @@ pub struct Survey {
     pub signature: String,
     pub symbol: String,
     pub deposits: Vec<SurveyDeposit>,
+    pub expiration: String,
+    pub size: DepositSize,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum DepositSize {
+    SMALL,
+    MODERATE,
+    LARGE,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
