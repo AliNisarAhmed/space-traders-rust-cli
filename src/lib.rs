@@ -1,6 +1,10 @@
 #![allow(non_camel_case_types)]
 
-use std::{error::Error, path::PathBuf};
+use std::{
+    error::Error,
+    fs::{self, File},
+    path::PathBuf,
+};
 
 pub mod api;
 pub mod domain;
@@ -19,7 +23,9 @@ pub struct AppArgs {
 
 #[derive(Subcommand, Debug)]
 enum Command {
+    GenerateDoc,
     Status,
+    /// Register a new player (NOTE: will override your current user's token)
     Register {
         #[arg(short = 'u', long)]
         username: String,
@@ -29,6 +35,7 @@ enum Command {
     },
     Contract(ContractSubCommand),
     #[command(alias = "whoami")]
+    /// Show current player's details
     WhoAmI,
     Waypoint(WaypointSubCommand),
     Ship(ShipSubCommand),
@@ -198,6 +205,13 @@ pub async fn run<'a>(args: AppArgs, config: Config) -> MyResult<()> {
     if let Some(user_info) = auth::check_user_token(&config.current_user_dir) {
         let api = Api::new(&user_info);
         match args.command {
+            Some(Command::GenerateDoc) => {
+                fs::write(
+                    "DOCUMENTATION.md",
+                    clap_markdown::help_markdown::<AppArgs>(),
+                )
+                .expect("Unable to write documentation");
+            }
             Some(Command::Status) => println!("You are logged in as {:#?}", user_info),
             Some(Command::Register { username, faction }) => {
                 let res = api.register_player(username, faction).await.unwrap();
